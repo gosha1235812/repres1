@@ -1,0 +1,38 @@
+name: Node.js CI
+
+# Коли запускати
+on:
+  push:
+    branches:
+      - main
+
+# Завдання
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Завантаження коду
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Встановлення Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      # Встановлення залежностей
+      - name: Install dependencies
+        run: npm install
+
+      # Запуск білду
+      - name: Build project
+        run: npm run build
+
+      # Збереження артефакту
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: .
