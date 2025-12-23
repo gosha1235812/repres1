@@ -1,51 +1,71 @@
-name: Node.js CI/CD
+name: Node.js CI/CD with Docker
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-      - name: Install dependencies
-        run: npm install
+    - name: Install dependencies
+      run: npm install
 
-      - name: Build project
-        run: npm run build
+    - name: Run build
+      run: npm run build
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build
-          path: .
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build
+        path: .
 
-      - name: Decode SSH key
-        run: |
-          echo "${{ secrets.EC2_SSH_KEY_B64 }}" | base64 -d > ec2-key.pem
-          chmod 600 ec2-key.pem
+    # ===========================
+    # Docker steps
+    # ===========================
 
-      - name: Copy project to EC2
-        run: |
-          rsync -avz -e "ssh -i ec2-key.pem -o StrictHostKeyChecking=no" ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/nodeapp
+    - name: Docker login
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Run application on EC2
-        run: |
-          ssh -i ec2-key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-            cd /home/ubuntu/nodeapp
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-            npm install
-            npm install -g pm2
-            pm2 restart all || pm2 start index.js
-          EOF
+    - name: Build Docker image
+      run: |
+        GIT_HASH=$(git rev-parse --short HEAD)
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/nodeapp:$GIT_HASH .
+
+    - name: Push Docker image
+      run: |
+        GIT_HASH=$(git rev-parse --short HEAD)
+        docker push ${{ secrets.DOCKER_USERNAME }}/nodeapp:$GIT_HASH
+
+    # ===========================
+    # EC2 deploy steps
+    # ===========================
+
+    # - name: Decode SSH key
+    #   run: |
+    #     echo "${{ secrets.EC2_SSH_KEY_B64 }}" | base64 -d > ec2-key.pem
+    #     chmod 600 ec2-key.pem
+
+    # - name: Copy files to EC2
+    #   run: |
+    #     rsync -avz -e "ssh -i ec2-key.pem -o StrictHostKeyChecking=no" ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/ubuntu/nodeapp
+
+    # - name: Run application on EC2
+    #   run: |
+    #     ssh -i ec2-key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+    #       cd /home/ubuntu/nodeapp
+    #       docker-compose down || true
+    #       docker-compose up -d
+    #     EOF
